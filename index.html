@@ -47,7 +47,7 @@
  */
 var RELAY = 'https://script.google.com/macros/s/AKfycbyIB8s4N0TU1xub5iuVCRgkWoITX1yRUR13KfyBvEBC6f7-j3PqWBR3_vK3Gmk_H9m6wQ/exec';
 var CODE = (new URLSearchParams(location.search).get('c') || '').replace(/\D/g, '').slice(0, 6);
-var HAVE = { h: 0, s: 0, c: 0 }, PAGE = null, INK = [], timer = null, fails = 0;
+var HAVE = { h: 0, s: 0, c: 0, g: 0, n: 0 }, PAGE = null, INK = [], LIVEST = null, timer = null, fails = 0;
 var USE_JSONP = false, jsonpN = 0;   // fetch가 두 번 막히면 스크립트로 불러 쓰는 방식(JSONP)으로 바꿈
 
 function $(id) { return document.getElementById(id); }
@@ -64,7 +64,7 @@ function join(code) {
 }
 
 function stateUrl() {
-  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&t=' + Date.now();
+  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&g=' + HAVE.g + '&n=' + HAVE.n + '&t=' + Date.now();
 }
 
 function poll() {
@@ -103,7 +103,8 @@ function apply(r) {
   if (r.closed) { $('box').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
   if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
   if (r.page) { PAGE = r.page; HAVE.h = r.h; $('page').innerHTML = PAGE.html; $('cover').className = PAGE.cover || ''; }
-  if (r.ink) { INK = r.ink; HAVE.s = r.s; }
+  // 펜 글씨: from이 있으면 가진 획 뒤에 이어 붙임. live = 선생님이 지금 긋는 중인 획
+  if (r.ink) { INK = r.from ? INK.slice(0, r.from).concat(r.ink) : r.ink; LIVEST = r.live || null; HAVE.s = r.s; HAVE.g = r.g || 0; HAVE.n = INK.length; }
   if (r.page || r.ink || r.css != null) layout();
   say('');
   timer = setTimeout(poll, 1500);
@@ -130,7 +131,7 @@ function drawInk(s, bw, bh) {
   var ctx = cv.getContext('2d');
   ctx.setTransform(d * s, 0, 0, d * s, 0, 0);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  INK.forEach(function (st) {
+  (LIVEST ? INK.concat([LIVEST]) : INK).forEach(function (st) {
     var a = st.p || [], n = a.length / 3;
     if (!n) return;
     var X = function (i) { return a[i * 3]; }, Y = function (i) { return a[i * 3 + 1]; }, P = function (i) { return a[i * 3 + 2]; };
