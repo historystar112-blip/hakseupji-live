@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수업 화면</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&family=Nanum+Myeongjo:wght@400;700;800&family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;700;800&display=swap" rel="stylesheet">
+<style id="appCss"></style>
+<style>
+  html, body { margin: 0; height: 100%; background: #15181d; color: #fff; font-family: 'Noto Sans KR', sans-serif; overflow: hidden; }
+  #join { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 16px; }
+  #join h1 { font-size: 24px; margin: 0; }
+  #join input { font-size: 32px; width: 7em; text-align: center; letter-spacing: .15em; padding: 8px; border-radius: 10px; border: 0; }
+  #join button { font-size: 18px; padding: 10px 22px; border-radius: 10px; border: 0; background: #1a5fd0; color: #fff; }
+  #msg { position: fixed; left: 0; right: 0; bottom: 10px; text-align: center; font-size: 14px; color: #c9d1d9; pointer-events: none; }
+  #box { position: absolute; left: 0; top: 0; overflow: hidden; background: #fff; box-shadow: 0 2px 18px rgba(0,0,0,.5); }
+  #page { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #ink { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #cover { position: absolute; inset: 0; display: none; }
+  #cover.black { display: block; background: #000; }
+  #cover.white { display: block; background: #fff; }
+  .sl-yt-open { display: none !important; }
+  #sender { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 16px; }
+  #sender[hidden], #join[hidden] { display: none; }
+  #sender h1 { font-size: 20px; margin: 0; }
+  .send-code { font-size: 40px; font-weight: 800; letter-spacing: .12em; }
+  .send-note { font-size: 13px; color: #c9d1d9; }
+</style>
+</head>
+<body>
+<div id="join" hidden>
+  <h1>📡 수업 화면</h1>
+  <div>선생님이 알려 준 숫자 6자리를 넣으세요</div>
+  <input id="codeIn" inputmode="numeric" maxlength="6" autocomplete="off">
+  <button id="go">들어가기</button>
+</div>
+<div id="box" hidden><div id="page"></div><canvas id="ink"></canvas><div id="cover"></div></div>
+<div id="msg"></div>
+<script>
+/*
+ * 학생 화면(구글 바깥에 두는 판): 학습지 공방 📡 학생 화면의 중계 웹앱에서 선생님이 띄운 장과 펜 글씨를
+ * 1.5초마다 바뀐 것만 받아 온다(fetch, 쿠키 없이 — 휴대폰에 구글 계정이 로그인돼 있어도 막히지 않게).
+ * 주소: …/live/?c=숫자6자리. 펜 글씨는 슬라이드 기준 좌표(px)라서 화면 크기가 달라도 같은 자리에 그린다.
+ * relay/Student.html과 같은 그리기(고치면 둘 다).
+ */
+var RELAY = 'https://script.google.com/macros/s/AKfycbyIB8s4N0TU1xub5iuVCRgkWoITX1yRUR13KfyBvEBC6f7-j3PqWBR3_vK3Gmk_H9m6wQ/exec';
+var CODE = (new URLSearchParams(location.search).get('c') || '').replace(/\D/g, '').slice(0, 6);
+var HAVE = { h: 0, s: 0, c: 0 }, PAGE = null, INK = [], timer = null, fails = 0;
+
+function $(id) { return document.getElementById(id); }
+function say(t) { $('msg').textContent = t || ''; }
+
+function join(code) {
+  code = String(code || '').replace(/\D/g, '').slice(0, 6);
+  if (code.length !== 6) { $('join').hidden = false; say(code ? '숫자 6자리를 넣어 주세요.' : ''); return; }
+  CODE = code;
+  $('join').hidden = true;
+  say('선생님 화면을 기다리는 중…');
+  try { history.replaceState(null, '', '?c=' + code); } catch (e) { /* 무시 */ }
+  poll();
+}
+
+function poll() {
+  clearTimeout(timer);
+  var url = RELAY + '?api=state&c=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&t=' + Date.now();
+  fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(apply).catch(function () {
+      fails++;
+      say('연결이 잠시 끊겼어요. 다시 잇는 중…');
+      timer = setTimeout(poll, Math.min(10000, 1500 * (fails + 1)));
+    });
+}
+
+function apply(r) {
+  fails = 0;
+  r = r || {};
+  if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000); return; }
+  if (r.closed) { $('box').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
+  if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
+  if (r.page) { PAGE = r.page; HAVE.h = r.h; $('page').innerHTML = PAGE.html; $('cover').className = PAGE.cover || ''; }
+  if (r.ink) { INK = r.ink; HAVE.s = r.s; }
+  if (r.page || r.ink || r.css != null) layout();
+  say('');
+  timer = setTimeout(poll, 1500);
+}
+
+function layout() {
+  if (!PAGE) return;
+  var W = PAGE.W, H = PAGE.H, vw = window.innerWidth, vh = window.innerHeight;
+  var s = Math.min(vw / W, vh / H), bw = Math.floor(W * s), bh = Math.floor(H * s);
+  var box = $('box');
+  box.hidden = false;
+  box.style.width = bw + 'px'; box.style.height = bh + 'px';
+  box.style.left = Math.floor((vw - bw) / 2) + 'px'; box.style.top = Math.floor((vh - bh) / 2) + 'px';
+  var pg = $('page');
+  pg.style.width = W + 'px'; pg.style.height = H + 'px'; pg.style.transform = 'scale(' + s + ')';
+  drawInk(s, bw, bh);
+}
+
+/** 펜 글씨: {c 색, a 비침, w 굵기(슬라이드 px), pw 누르는 힘 굵기, p [x, y, 힘, …]} */
+function drawInk(s, bw, bh) {
+  var cv = $('ink'), d = Math.min(window.devicePixelRatio || 1, 2);
+  cv.style.width = bw + 'px'; cv.style.height = bh + 'px';
+  cv.width = Math.round(bw * d); cv.height = Math.round(bh * d);
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(d * s, 0, 0, d * s, 0, 0);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  INK.forEach(function (st) {
+    var a = st.p || [], n = a.length / 3;
+    if (!n) return;
+    var X = function (i) { return a[i * 3]; }, Y = function (i) { return a[i * 3 + 1]; }, P = function (i) { return a[i * 3 + 2]; };
+    ctx.strokeStyle = st.c; ctx.globalAlpha = st.a == null ? 1 : st.a; ctx.lineWidth = st.w;
+    if (st.pw && n > 1) {
+      var px = X(0), py = Y(0);
+      for (var j = 1; j < n; j++) {
+        var ex = j + 1 < n ? (X(j) + X(j + 1)) / 2 : X(j), ey = j + 1 < n ? (Y(j) + Y(j + 1)) / 2 : Y(j);
+        ctx.lineWidth = st.w * (P(j) < 0 ? 1 : 0.35 + 1.3 * P(j));
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.quadraticCurveTo(X(j), Y(j), ex, ey); ctx.stroke();
+        px = ex; py = ey;
+      }
+    } else {
+      ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+      if (n === 1) ctx.lineTo(X(0) + 0.1, Y(0) + 0.1);
+      for (var i = 1; i < n - 1; i++) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
+      if (n > 1) ctx.lineTo(X(n - 1), Y(n - 1));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+
+window.addEventListener('resize', layout);
+$('go').addEventListener('click', function () { join($('codeIn').value); });
+$('codeIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') join($('codeIn').value); });
+join(CODE);
+</script>
+</body>
+</html>
