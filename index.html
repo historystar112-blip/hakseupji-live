@@ -48,6 +48,7 @@
 var RELAY = 'https://script.google.com/macros/s/AKfycbyIB8s4N0TU1xub5iuVCRgkWoITX1yRUR13KfyBvEBC6f7-j3PqWBR3_vK3Gmk_H9m6wQ/exec';
 var CODE = (new URLSearchParams(location.search).get('c') || '').replace(/\D/g, '').slice(0, 6);
 var HAVE = { h: 0, s: 0, c: 0 }, PAGE = null, INK = [], timer = null, fails = 0;
+var USE_JSONP = false, jsonpN = 0;   // fetch가 두 번 막히면 스크립트로 불러 쓰는 방식(JSONP)으로 바꿈
 
 function $(id) { return document.getElementById(id); }
 function say(t) { $('msg').textContent = t || ''; }
@@ -62,15 +63,37 @@ function join(code) {
   poll();
 }
 
+function stateUrl() {
+  return RELAY + '?api=state&c=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&t=' + Date.now();
+}
+
 function poll() {
   clearTimeout(timer);
-  var url = RELAY + '?api=state&c=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&t=' + Date.now();
-  fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(apply).catch(function () {
-      fails++;
-      say('연결이 잠시 끊겼어요. 다시 잇는 중…');
-      timer = setTimeout(poll, Math.min(10000, 1500 * (fails + 1)));
-    });
+  (USE_JSONP ? jsonp(stateUrl()) : fetch(stateUrl(), { credentials: 'omit', cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('대답이 JSON이 아님: ' + t.slice(0, 60)); } });
+  })).then(function (r) {
+    if (r && r.error) throw new Error('중계: ' + r.error);
+    apply(r);
+  }).catch(function (err) {
+    fails++;
+    if (!USE_JSONP && fails >= 2) { USE_JSONP = true; fails = 0; }
+    say('연결이 잠시 끊겼어요. 다시 잇는 중… (' + (USE_JSONP ? 'J ' : 'F ') + String(err && err.message || err).slice(0, 80) + ')');
+    timer = setTimeout(poll, Math.min(10000, 1500 * (fails + 1)));
+  });
+}
+
+/** 스크립트 태그로 불러오기(JSONP): 브라우저가 fetch를 막을 때 */
+function jsonp(url) {
+  return new Promise(function (resolve, reject) {
+    var name = '__live' + (++jsonpN), s = document.createElement('script'), done = false;
+    var end = function () { done = true; try { delete window[name]; } catch (e) { window[name] = undefined; } s.remove(); };
+    window[name] = function (d) { end(); resolve(d); };
+    s.onerror = function () { if (!done) { end(); reject(new Error('스크립트로도 못 읽음')); } };
+    setTimeout(function () { if (!done) { end(); reject(new Error('대답 없음(10초)')); } }, 10000);
+    s.src = url + '&cb=' + name;
+    document.head.appendChild(s);
+  });
 }
 
 function apply(r) {
