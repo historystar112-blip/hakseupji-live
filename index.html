@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&family=Nanum+Myeongjo:wght@400;700;800&family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@kfonts/nanum-square-round@0.2.0/index.css" rel="stylesheet">
 <style id="appCss"></style>
 <style>
   html, body { margin: 0; height: 100%; background: #15181d; color: #fff; font-family: 'Noto Sans KR', sans-serif; overflow: hidden; }
@@ -14,6 +15,8 @@
   #join h1 { font-size: 24px; margin: 0; }
   #join input { font-size: 32px; width: 7em; text-align: center; letter-spacing: .15em; padding: 8px; border-radius: 10px; border: 0; }
   #join button { font-size: 18px; padding: 10px 22px; border-radius: 10px; border: 0; background: #1a5fd0; color: #fff; }
+  #hint { position: fixed; left: 8px; right: 8px; top: 8px; z-index: 3; text-align: center; font-size: 13px; background: rgba(20,24,30,.92); color: #fff; padding: 8px 10px; border-radius: 10px; pointer-events: none; }
+  #hint[hidden] { display: none; }
   #msg { position: fixed; left: 0; right: 0; bottom: 10px; text-align: center; font-size: 14px; color: #c9d1d9; pointer-events: none; }
   #box { position: absolute; left: 0; top: 0; overflow: hidden; background: #fff; box-shadow: 0 2px 18px rgba(0,0,0,.5); }
   #page { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -37,6 +40,7 @@
   <button id="go">들어가기</button>
 </div>
 <div id="box" hidden><div id="page"></div><canvas id="ink"></canvas><div id="cover"></div></div>
+<div id="hint" hidden></div>
 <div id="msg"></div>
 <script>
 /*
@@ -102,7 +106,11 @@ function apply(r) {
   if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000); return; }
   if (r.closed) { $('box').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
   if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
-  if (r.page) { PAGE = r.page; HAVE.h = r.h; $('page').innerHTML = PAGE.html; $('cover').className = PAGE.cover || ''; }
+  if (r.page) {
+    var moved = !PAGE || PAGE.key !== r.page.key;
+    PAGE = r.page; HAVE.h = r.h; $('page').innerHTML = PAGE.html; $('cover').className = PAGE.cover || '';
+    if (moved) window.scrollTo(0, 0);   // 다른 쪽·문항이면 맨 위부터(정답을 열어 같은 쪽을 다시 받을 때는 그대로)
+  }
   // 펜 글씨: from이 있으면 가진 획 뒤에 이어 붙임. live = 선생님이 지금 긋는 중인 획
   if (r.ink) { INK = r.from ? INK.slice(0, r.from).concat(r.ink) : r.ink; LIVEST = r.live || null; HAVE.s = r.s; HAVE.g = r.g || 0; HAVE.n = INK.length; }
   if (r.page || r.ink || r.css != null) layout();
@@ -112,12 +120,23 @@ function apply(r) {
 
 function layout() {
   if (!PAGE) return;
-  var W = PAGE.W, H = PAGE.H, vw = window.innerWidth, vh = window.innerHeight;
-  var s = Math.min(vw / W, vh / H), bw = Math.floor(W * s), bh = Math.floor(H * s);
+  // 학습지(fit = width): 화면 폭에 맞추고 위아래로 스크롤(두 손가락으로 크게 보기도). 슬라이드: 화면 안에 다 보이게
+  var W = PAGE.W, H = PAGE.H, doc = PAGE.fit === 'width';
+  document.documentElement.style.overflow = doc ? 'auto' : '';
+  document.body.style.overflow = doc ? 'visible' : '';
+  var vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight;
+  var s = doc ? Math.min(vw / W, 2.5) : Math.min(vw / W, vh / H), bw = Math.floor(W * s), bh = Math.floor(H * s);
   var box = $('box');
   box.hidden = false;
   box.style.width = bw + 'px'; box.style.height = bh + 'px';
-  box.style.left = Math.floor((vw - bw) / 2) + 'px'; box.style.top = Math.floor((vh - bh) / 2) + 'px';
+  box.style.left = Math.floor((vw - bw) / 2) + 'px'; box.style.top = Math.max(0, Math.floor((vh - bh) / 2)) + 'px';
+  // 학습지 글씨가 작게 보이는 세로 휴대폰: 한 번만 안내(5초)
+  if (doc && s < 0.75 && vh > vw && !layout.hinted) {
+    layout.hinted = true;
+    $('hint').textContent = '글씨가 작으면 휴대폰을 가로로 돌리거나 두 손가락으로 벌려 크게 보세요';
+    $('hint').hidden = false;
+    setTimeout(function () { $('hint').hidden = true; }, 5000);
+  }
   var pg = $('page');
   pg.style.width = W + 'px'; pg.style.height = H + 'px'; pg.style.transform = 'scale(' + s + ')';
   drawInk(s, bw, bh);
