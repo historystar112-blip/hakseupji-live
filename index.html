@@ -45,7 +45,7 @@
 <script>
 /*
  * 학생 화면(구글 바깥에 두는 판): 학습지 공방 📡 학생 화면의 중계 웹앱에서 선생님이 띄운 장과 펜 글씨를
- * 1.5초마다 바뀐 것만 받아 온다(fetch, 쿠키 없이 — 휴대폰에 구글 계정이 로그인돼 있어도 막히지 않게).
+ * 3초쯤마다 바뀐 것만 받아 온다(fetch, 쿠키 없이 — 휴대폰에 구글 계정이 로그인돼 있어도 막히지 않게).
  * 주소: …/live/?c=숫자6자리. 펜 글씨는 슬라이드 기준 좌표(px)라서 화면 크기가 달라도 같은 자리에 그린다.
  * relay/Student.html과 같은 그리기(고치면 둘 다).
  */
@@ -83,7 +83,7 @@ function poll() {
     fails++;
     if (!USE_JSONP && fails >= 2) { USE_JSONP = true; fails = 0; }
     say('연결이 잠시 끊겼어요. 다시 잇는 중… (' + (USE_JSONP ? 'J ' : 'F ') + String(err && err.message || err).slice(0, 80) + ')');
-    timer = setTimeout(poll, Math.min(10000, 1500 * (fails + 1)));
+    timer = setTimeout(poll, Math.min(10000, 2000 * (fails + 1)) * (0.8 + Math.random() * 0.4));
   });
 }
 
@@ -103,7 +103,7 @@ function jsonp(url) {
 function apply(r) {
   fails = 0;
   r = r || {};
-  if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000); return; }
+  if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000 + Math.random() * 1000); return; }
   if (r.closed) { $('box').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
   if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
   if (r.page) {
@@ -115,7 +115,8 @@ function apply(r) {
   if (r.ink) { INK = r.from ? INK.slice(0, r.from).concat(r.ink) : r.ink; LIVEST = r.live || null; HAVE.s = r.s; HAVE.g = r.g || 0; HAVE.n = INK.length; }
   if (r.page || r.ink || r.css != null) layout();
   say('');
-  timer = setTimeout(poll, 1500);
+  // 3초쯤마다(학생마다 조금씩 흩어서) — 한 반이 한꺼번에 물으면 구글 서버(동시 실행 약 30개)가 막혀 선생님 보내기가 밀린다
+  timer = setTimeout(poll, 2500 + Math.random() * 1000);
 }
 
 function layout() {
