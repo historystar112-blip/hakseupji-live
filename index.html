@@ -30,6 +30,13 @@
   #sender h1 { font-size: 20px; margin: 0; }
   .send-code { font-size: 40px; font-weight: 800; letter-spacing: .12em; }
   .send-note { font-size: 13px; color: #c9d1d9; }
+  /* 📄 나눠 주기 띠(선생님이 켤 때만) */
+  #shareBar { position: fixed; left: 8px; right: 8px; top: 8px; z-index: 5; max-width: 640px; margin: 0 auto; box-sizing: border-box; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: #e9f7ef; color: #14532d; border: 1px solid #86c99f; border-radius: 12px; padding: 8px 12px; font: 15px/1.4 'Noto Sans KR', sans-serif; box-shadow: 0 3px 14px rgba(0,0,0,.35); }
+  #shareBar[hidden] { display: none; }
+  #shareBar b { flex: 1; min-width: 12em; }
+  #shareBar a { text-decoration: none; font: 700 15px 'Noto Sans KR', sans-serif; padding: 7px 14px; border-radius: 9px; background: #1f8a4c; color: #fff; }
+  #shareBar a.sub { background: #fff; color: #1f8a4c; border: 1px solid #1f8a4c; }
   /* 💬 답하기 칸 */
   #ans { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 4; max-width: 640px; margin: 0 auto; max-height: 60vh; overflow: auto; box-sizing: border-box;
     background: #fff; color: #111; border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,.45); padding: 10px 12px; font: 15px/1.45 'Noto Sans KR', sans-serif; text-align: left; }
@@ -72,6 +79,7 @@
   <div class="ans-foot"><span id="ansState"></span><button id="ansSend">보내기</button></div>
 </div>
 <div id="ansTab" hidden><button id="ansOpen">✏️ 답하기</button></div>
+<div id="shareBar" hidden><b>📄 선생님이 학습지를 나눠 주었어요</b><a id="shareOpen" target="_blank" rel="noopener">열기</a><a id="shareDl" class="sub" target="_blank" rel="noopener">내려받기</a></div>
 <div id="hint" hidden></div>
 <div id="msg"></div>
 <script>
@@ -83,7 +91,7 @@
  */
 var RELAY = 'https://script.google.com/macros/s/AKfycbyIB8s4N0TU1xub5iuVCRgkWoITX1yRUR13KfyBvEBC6f7-j3PqWBR3_vK3Gmk_H9m6wQ/exec';
 var CODE = (new URLSearchParams(location.search).get('c') || '').replace(/\D/g, '').slice(0, 6);
-var HAVE = { h: 0, s: 0, c: 0, g: 0, n: 0, a: 0 }, PAGE = null, INK = [], LIVEST = null, timer = null, fails = 0;
+var HAVE = { h: 0, s: 0, c: 0, g: 0, n: 0, a: 0, f: 0 }, PAGE = null, INK = [], LIVEST = null, timer = null, fails = 0;
 var USE_JSONP = false, jsonpN = 0;   // fetch가 두 번 막히면 스크립트로 불러 쓰는 방식(JSONP)으로 바꿈
 
 function $(id) { return document.getElementById(id); }
@@ -100,7 +108,7 @@ function join(code) {
 }
 
 function stateUrl() {
-  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&g=' + HAVE.g + '&n=' + HAVE.n + '&av=' + HAVE.a + '&t=' + Date.now();
+  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&g=' + HAVE.g + '&n=' + HAVE.n + '&av=' + HAVE.a + '&fv=' + HAVE.f + '&t=' + Date.now();
 }
 
 function poll() {
@@ -136,7 +144,7 @@ function apply(r) {
   fails = 0;
   r = r || {};
   if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000 + Math.random() * 1000); return; }
-  if (r.closed) { $('box').hidden = true; ansUpdate(null); say('수업 화면이 끝났습니다. 고마워요!'); return; }
+  if (r.closed) { $('box').hidden = true; ansUpdate(null); SHARE_ON = false; $('shareBar').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
   if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
   if (r.page) {
     var moved = !PAGE || PAGE.key !== r.page.key;
@@ -146,8 +154,9 @@ function apply(r) {
   // 펜 글씨: from이 있으면 가진 획 뒤에 이어 붙임. live = 선생님이 지금 긋는 중인 획
   if (r.ink) { INK = r.from ? INK.slice(0, r.from).concat(r.ink) : r.ink; LIVEST = r.live || null; HAVE.s = r.s; HAVE.g = r.g || 0; HAVE.n = INK.length; }
   if (r.a) { HAVE.a = r.a; ansUpdate(r.ask); }   // 💬 지금 답을 받는 문항
+  if (r.f) { HAVE.f = r.f; shareUpdate(r.share); }   // 📄 나눠 주기 켬·끔
   if (r.page || r.ink || r.css != null) layout();
-  say('');
+  say(Date.now() < SHARE_MSG_UNTIL ? '학습지 나눠 주기가 끝났어요.' : '');   // 📄 끝났다는 알림은 4초 동안 둠
   // 3초쯤마다(학생마다 조금씩 흩어서) — 한 반이 한꺼번에 물으면 구글 서버(동시 실행 약 30개)가 막혀 선생님 보내기가 밀린다
   timer = setTimeout(poll, 2500 + Math.random() * 1000);
 }
@@ -206,6 +215,25 @@ function drawInk(s, bw, bh) {
     }
     ctx.globalAlpha = 1;
   });
+}
+
+/*
+ * 📄 나눠 주기: 선생님이 「▶ 지금 나눠 주기」를 누를 때만 위에 받기 띠가 뜬다(state의 share). 끄면 띠가 사라진다.
+ * 파일은 선생님 드라이브에 있고 여기서는 주소로 연다(끄면 주소도 막힘).
+ */
+var SHARE_ON = false, SHARE_MSG_UNTIL = 0;
+function shareUpdate(sh) {
+  var on = !!(sh && sh.on && sh.url);
+  if (on) {
+    $('shareOpen').href = sh.url;
+    $('shareDl').href = sh.dl || sh.url;
+    $('shareDl').hidden = !sh.dl;
+    $('shareBar').title = sh.name || '';
+  } else if (SHARE_ON) {
+    SHARE_MSG_UNTIL = Date.now() + 4000;
+  }
+  SHARE_ON = on;
+  $('shareBar').hidden = !on;
 }
 
 /*
