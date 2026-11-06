@@ -60,6 +60,23 @@
   #ansSend { font-size: 16px; padding: 8px 18px; border-radius: 10px; border: 0; background: #1a5fd0; color: #fff; }
   #ansSend:disabled { background: #a7b0bb; }
   #ans.closed #ansText, #ans.closed .ans-picks button { opacity: .6; }
+  #ans .ans-tabs { display: flex; gap: 4px; }
+  #ans .ans-tabs[hidden], #ansPane[hidden], #chatBody[hidden], #ansHeadK[hidden], #chatNew[hidden] { display: none; }
+  #ans .ans-tabs button { border: 0; background: #eef2f8; color: #345; border-radius: 8px; padding: 4px 10px; font: 700 14px 'Noto Sans KR', sans-serif; white-space: nowrap; }
+  #ans .ans-tabs button.on { background: #1a5fd0; color: #fff; }
+  #chatNew, #chatNewTab { font-style: normal; background: #e53935; color: #fff; border-radius: 9px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
+  #chatNote { font-size: 12px; color: #777; margin: 2px 0 6px; }
+  #chatList { max-height: 30vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  #chatList:empty { display: none; }
+  #chatList .chat-msg { background: #f2f5fa; border-radius: 10px; padding: 6px 10px; font-size: 15px; max-width: 85%; align-self: flex-start; word-break: break-word; }
+  #chatList .chat-msg.mine { background: #e3eeff; align-self: flex-end; }
+  #chatList .chat-msg b { display: block; font-size: 12px; color: #567; }
+  #chatBody .chat-row { display: flex; gap: 6px; }
+  #chatText { flex: 1; min-width: 0; font-size: 16px; padding: 8px; border: 1px solid #c8d0dc; border-radius: 8px; color: #111; background: #fff; }
+  #chatSend { font-size: 16px; padding: 8px 14px; border-radius: 10px; border: 0; background: #1a5fd0; color: #fff; }
+  #chatSend:disabled { background: #a7b0bb; }
+  #chatState { font-size: 12px; color: #1a7f37; min-height: 1.2em; margin-top: 4px; }
+  #chatState.err { color: #c62828; }
   #ansTab { position: fixed; right: 12px; bottom: 12px; z-index: 4; }
   #ansTab button { font: 700 16px 'Noto Sans KR', sans-serif; padding: 10px 16px; border-radius: 22px; border: 0; background: #1a5fd0; color: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
 </style>
@@ -73,10 +90,13 @@
 </div>
 <div id="box" hidden><div id="page"></div><canvas id="ink"></canvas><div id="cover"></div></div>
 <div id="ans" hidden>
-  <div class="ans-head"><b>✏️ 답하기</b><span id="ansTitle"></span><button id="ansMin" title="접기">▾ 접기</button></div>
+  <div class="ans-head"><b id="ansHeadK">✏️ 답하기</b><span class="ans-tabs" id="ansTabs" hidden><button data-tab="ans">✏️ 답하기</button><button data-tab="chat">💭 채팅<i id="chatNew" hidden></i></button></span><span id="ansTitle"></span><button id="ansMin" title="접기">▾ 접기</button></div>
   <label class="ans-name">번호·별명 <input id="ansName" maxlength="12" autocomplete="off" placeholder="실명 대신 번호나 별명 (예: 12번)"></label>
-  <div id="ansBody"></div>
-  <div class="ans-foot"><span id="ansState"></span><button id="ansSend">보내기</button></div>
+  <div id="ansPane"><div id="ansBody"></div>
+  <div class="ans-foot"><span id="ansState"></span><button id="ansSend">보내기</button></div></div>
+  <div id="chatBody" hidden><div id="chatNote"></div><div id="chatList"></div>
+    <div class="chat-row"><input id="chatText" maxlength="200" autocomplete="off" placeholder="선생님께 하고 싶은 말·질문 (200자)"><button id="chatSend">보내기</button></div>
+    <div id="chatState"></div></div>
 </div>
 <div id="ansTab" hidden><button id="ansOpen">✏️ 답하기</button></div>
 <div id="shareBar" hidden><b>📄 선생님이 학습지를 나눠 주었어요</b><a id="shareOpen" target="_blank" rel="noopener">열기</a><a id="shareDl" class="sub" target="_blank" rel="noopener">내려받기</a></div>
@@ -91,7 +111,7 @@
  */
 var RELAY = 'https://script.google.com/macros/s/AKfycbyIB8s4N0TU1xub5iuVCRgkWoITX1yRUR13KfyBvEBC6f7-j3PqWBR3_vK3Gmk_H9m6wQ/exec';
 var CODE = (new URLSearchParams(location.search).get('c') || '').replace(/\D/g, '').slice(0, 6);
-var HAVE = { h: 0, s: 0, c: 0, g: 0, n: 0, a: 0, f: 0 }, PAGE = null, INK = [], LIVEST = null, timer = null, fails = 0;
+var HAVE = { h: 0, s: 0, c: 0, g: 0, n: 0, a: 0, f: 0, t: 0, cn: 0 }, PAGE = null, INK = [], LIVEST = null, timer = null, fails = 0;
 var USE_JSONP = false, jsonpN = 0;   // fetch가 두 번 막히면 스크립트로 불러 쓰는 방식(JSONP)으로 바꿈
 
 function $(id) { return document.getElementById(id); }
@@ -108,7 +128,7 @@ function join(code) {
 }
 
 function stateUrl() {
-  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&g=' + HAVE.g + '&n=' + HAVE.n + '&av=' + HAVE.a + '&fv=' + HAVE.f + '&t=' + Date.now();
+  return RELAY + '?api=state&code=' + CODE + '&h=' + HAVE.h + '&s=' + HAVE.s + '&cv=' + HAVE.c + '&g=' + HAVE.g + '&n=' + HAVE.n + '&av=' + HAVE.a + '&fv=' + HAVE.f + '&tv=' + HAVE.t + '&cn=' + HAVE.cn + '&t=' + Date.now();
 }
 
 function poll() {
@@ -144,7 +164,7 @@ function apply(r) {
   fails = 0;
   r = r || {};
   if (r.none) { say('코드 ' + CODE + ' 수업을 찾지 못했어요. 숫자를 확인하거나 선생님이 학생 화면을 켤 때까지 기다려 주세요.'); timer = setTimeout(poll, 3000 + Math.random() * 1000); return; }
-  if (r.closed) { $('box').hidden = true; ansUpdate(null); SHARE_ON = false; $('shareBar').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
+  if (r.closed) { $('box').hidden = true; chatUpdate(null); ansUpdate(null); SHARE_ON = false; $('shareBar').hidden = true; say('수업 화면이 끝났습니다. 고마워요!'); return; }
   if (r.css != null) { $('appCss').textContent = r.css; HAVE.c = r.c; }
   if (r.page) {
     var moved = !PAGE || PAGE.key !== r.page.key;
@@ -155,6 +175,8 @@ function apply(r) {
   if (r.ink) { INK = r.from ? INK.slice(0, r.from).concat(r.ink) : r.ink; LIVEST = r.live || null; HAVE.s = r.s; HAVE.g = r.g || 0; HAVE.n = INK.length; }
   if (r.a) { HAVE.a = r.a; ansUpdate(r.ask); }   // 💬 지금 답을 받는 문항
   if (r.f) { HAVE.f = r.f; shareUpdate(r.share); }   // 📄 나눠 주기 켬·끔
+  if (r.t) { HAVE.t = r.t; chatUpdate(r.chat, r.chatHid); }   // 💭 채팅 열림·보이기
+  if (r.chats) { HAVE.cn = r.cn; chatAdd(r.chats); }   // 💭 모두 보는 채팅의 새 글
   if (r.page || r.ink || r.css != null) layout();
   say(Date.now() < SHARE_MSG_UNTIL ? '학습지 나눠 주기가 끝났어요.' : '');   // 📄 끝났다는 알림은 4초 동안 둠
   // 3초쯤마다(학생마다 조금씩 흩어서) — 한 반이 한꺼번에 물으면 구글 서버(동시 실행 약 30개)가 막혀 선생님 보내기가 밀린다
@@ -256,14 +278,16 @@ var ANS_CIRCLE = '①②③④⑤⑥⑦⑧⑨⑩';
 
 /** 중계가 알려 준 지금 문항(바뀌었을 때만 온다) */
 function ansUpdate(ask) {
-  if (!ask) { ASK = null; $('ans').hidden = true; $('ansTab').hidden = true; return; }
+  if (!ask) { ASK = null; panelShow(); return; }
   var fresh = !ASK || ASK.id !== ask.id;
   ASK = ask;
   if (fresh) {
     ANS.pick = [];
     var prev = ANS.sent[ask.id] || '';
+    TAB = 'ans';   // 선생님이 새 문항을 열면 답하기 칸으로
     if (ask.kind === 'text') {
-      $('ansBody').innerHTML = '<textarea id="ansText" rows="3" maxlength="300" placeholder="여기에 답을 쓰세요"></textarea><div class="ans-count"><span id="ansCount">0</span> / 300</div>';
+      var max = ask.whole ? 500 : 300;   // 📝 종합 답변은 500자
+      $('ansBody').innerHTML = '<textarea id="ansText" rows="' + (ask.whole ? 5 : 3) + '" maxlength="' + max + '" placeholder="' + (ask.whole ? '학습지 전체를 보고 정리한 것·궁금한 것·생각을 써 보세요' : '여기에 답을 쓰세요') + '"></textarea><div class="ans-count"><span id="ansCount">0</span> / ' + max + '</div>';
       $('ansText').value = prev;
       $('ansCount').textContent = prev.length;
     } else if (ask.kind === 'choice') {
@@ -287,14 +311,7 @@ function ansUpdate(ask) {
   else if (!fresh && /마감/.test($('ansState').textContent)) ansState(ANS.sent[ask.id] ? '✓ 보냈어요. 고쳐서 다시 보낼 수 있어요.' : '');
   ansShow();
 }
-function ansShow() {
-  if (!ASK) return;
-  $('ans').hidden = ANS.min;
-  $('ansTab').hidden = !ANS.min;
-  $('ansSend').disabled = ANS.busy || !ASK.open;
-  Array.prototype.forEach.call($('ansBody').querySelectorAll('textarea, button'), function (x) { x.disabled = !ASK.open; });
-  if (!$('ansName').value) $('ansName').value = ansStore('hakseupjiLiveName') || '';
-}
+function ansShow() { panelShow(); }
 function ansState(t, err) { $('ansState').textContent = t || ''; $('ansState').className = err ? 'err' : ''; }
 function ansPaintPicks() {
   Array.prototype.forEach.call($('ansBody').querySelectorAll('[data-pick]'), function (b) {
@@ -337,6 +354,111 @@ $('ansBody').addEventListener('input', function (e) { if (e.target.id === 'ansTe
 /** 답 보내기(상태를 읽는 길과 같게: fetch, 막히면 JSONP) */
 function ansTransport(q) {
   var url = RELAY + '?api=answer&code=' + CODE + '&aid=' + encodeURIComponent(q.aid) + '&who=' + q.who + '&nm=' + encodeURIComponent(q.nm) + '&t=' + encodeURIComponent(q.t) + '&ts=' + Date.now();
+  if (USE_JSONP) return jsonp(url);
+  return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('대답이 JSON이 아님'); } });
+  });
+}
+
+/*
+ * 💭 수업 채팅: 선생님이 채팅을 열면(state의 chat.open) 아래 칸에 「💭 채팅」이 생긴다(답 칸과 함께면 탭으로 오감).
+ * 번호·별명은 답하기와 같이 쓰고, 글은 200자·3초에 한 번. 기본은 선생님만 보고(학생은 내가 보낸 글만),
+ * 선생님이 「학생 화면에도 보이기」를 켜면(chat.show) 모두의 글(chats — 숨긴 글 빼고)이 보인다.
+ */
+var CHAT = { open: false, show: false, list: [], mine: [], hid: [], busy: false, unseen: 0 }, TAB = 'ans';
+function chatUpdate(ch, hid) {
+  var was = CHAT.open || CHAT.show;
+  CHAT.open = !!(ch && ch.open); CHAT.show = !!(ch && ch.show);
+  if (hid) { CHAT.hid = hid; CHAT.list = CHAT.list.filter(function (x) { return hid.indexOf(x.id) < 0; }); }
+  if (!was && CHAT.open) { if (!ASK) TAB = 'chat'; ANS.min = false; }
+  chatRender();
+  panelShow();
+}
+function chatAdd(list) {
+  var mine = CHAT.mine.map(function (x) { return x.id; });
+  list.forEach(function (x) {
+    if (CHAT.hid.indexOf(x.id) >= 0 || CHAT.list.some(function (y) { return y.id === x.id; })) return;
+    CHAT.list.push(x);
+    if ((TAB !== 'chat' || ANS.min) && mine.indexOf(x.id) < 0) CHAT.unseen++;
+  });
+  CHAT.list.sort(function (a, b) { return a.id - b.id; });
+  if (CHAT.list.length > 300) CHAT.list = CHAT.list.slice(-300);
+  chatRender();
+  panelShow();
+}
+function chatRender() {
+  var mineIds = CHAT.mine.map(function (x) { return x.id; });
+  var items = CHAT.show ? CHAT.list : CHAT.mine;
+  $('chatNote').textContent = (CHAT.show ? '모두가 함께 보는 채팅이에요. 서로 예의 있게 써 주세요.' : '내가 보낸 글은 선생님만 봐요.') + (CHAT.open ? '' : ' 선생님이 채팅을 닫았어요.');
+  var el = $('chatList'), atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.innerHTML = items.map(function (x) {
+    var mine = !CHAT.show || mineIds.indexOf(x.id) >= 0;
+    return '<div class="chat-msg' + (mine ? ' mine' : '') + '"><b>' + ansEsc(mine ? '나' + (x.n ? ' · ' + x.n : '') : x.n) + '</b>' + ansEsc(x.t) + '</div>';
+  }).join('');
+  if (atEnd) el.scrollTop = el.scrollHeight;
+}
+/** 아래 칸(답하기·채팅)을 보이고 숨기고, 둘 다 있으면 탭 */
+function panelShow() {
+  var hasAns = !!ASK, hasChat = CHAT.open || CHAT.show;
+  if (!hasAns && !hasChat) { $('ans').hidden = true; $('ansTab').hidden = true; return; }
+  if (TAB === 'ans' && !hasAns) TAB = 'chat';
+  if (TAB === 'chat' && !hasChat) TAB = 'ans';
+  if (TAB === 'chat' && !ANS.min) CHAT.unseen = 0;
+  var both = hasAns && hasChat;
+  $('ansTabs').hidden = !both;
+  $('ansHeadK').hidden = both;
+  $('ansHeadK').textContent = TAB === 'chat' ? '💭 채팅' : (ASK && ASK.whole ? '📝 종합' : '✏️ 답하기');
+  Array.prototype.forEach.call($('ansTabs').querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.tab === TAB); });
+  $('chatNew').hidden = !(CHAT.unseen && TAB !== 'chat');
+  $('chatNew').textContent = CHAT.unseen;
+  $('ansPane').hidden = TAB !== 'ans';
+  $('chatBody').hidden = TAB !== 'chat';
+  $('ansTitle').textContent = TAB === 'chat' ? (CHAT.show ? '모두 함께 봐요' : '선생님만 봐요') : ((ASK && ASK.title) || '');
+  $('ans').hidden = ANS.min;
+  $('ansTab').hidden = !ANS.min;
+  $('ansOpen').innerHTML = (TAB === 'chat' ? '💭 채팅' : ASK && ASK.whole ? '📝 종합' : '✏️ 답하기') + (CHAT.unseen ? '<i id="chatNewTab">' + CHAT.unseen + '</i>' : '');
+  if (ASK) {
+    $('ansSend').disabled = ANS.busy || !ASK.open;
+    Array.prototype.forEach.call($('ansBody').querySelectorAll('textarea, button'), function (x) { x.disabled = !ASK.open; });
+  }
+  $('chatSend').disabled = CHAT.busy || !CHAT.open;
+  $('chatText').disabled = !CHAT.open;
+  if (!$('ansName').value) $('ansName').value = ansStore('hakseupjiLiveName') || '';
+}
+function chatState(t, err) { $('chatState').textContent = t || ''; $('chatState').className = err ? 'err' : ''; }
+var CHAT_ERR = { chatoff: '선생님이 채팅을 닫았어요.', rate: '조금 뒤(3초)에 다시 보내 주세요.', name: '번호나 별명을 써 주세요.', empty: '글을 써 주세요.', session: '수업 화면이 끝났어요.', busy: '잠시 뒤 다시 보내 주세요.' };
+function chatSendNow() {
+  if (!CHAT.open || CHAT.busy) return;
+  var name = ($('ansName').value || '').trim(), t = ($('chatText').value || '').trim();
+  if (!name) { chatState(CHAT_ERR.name, true); $('ansName').focus(); return; }
+  if (!t) { chatState(CHAT_ERR.empty, true); $('chatText').focus(); return; }
+  ansStore('hakseupjiLiveName', name);
+  CHAT.busy = true; panelShow(); chatState('보내는 중…');
+  chatTransport({ who: ansWho(), nm: name, t: t }).then(function (r) {
+    if (r && r.ok) {
+      CHAT.mine.push({ id: r.id, n: name, t: t.slice(0, 200), at: Date.now() });
+      if (CHAT.show && !CHAT.list.some(function (y) { return y.id === r.id; })) CHAT.list.push({ id: r.id, n: name, t: t.slice(0, 200), at: Date.now() });
+      $('chatText').value = '';
+      chatState('✓ 보냈어요.');
+      chatRender();
+      return;
+    }
+    chatState(CHAT_ERR[r && r.error] || '보내지 못했어요. 다시 눌러 주세요.', true);
+  }, function () { chatState('보내지 못했어요. 다시 눌러 주세요.', true); }).then(function () { CHAT.busy = false; panelShow(); });
+}
+$('chatSend').addEventListener('click', chatSendNow);
+$('chatText').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); chatSendNow(); } });
+$('ansTabs').addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('[data-tab]');
+  if (!b) return;
+  TAB = b.dataset.tab;
+  panelShow();
+});
+
+/** 💭 채팅 보내기(답 보내기와 같은 길) */
+function chatTransport(q) {
+  var url = RELAY + '?api=chat&code=' + CODE + '&who=' + q.who + '&nm=' + encodeURIComponent(q.nm) + '&t=' + encodeURIComponent(q.t) + '&ts=' + Date.now();
   if (USE_JSONP) return jsonp(url);
   return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
